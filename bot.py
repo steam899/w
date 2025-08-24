@@ -109,7 +109,7 @@ class WolfBetBot:
                 print(f"⚠️ Parse bet JSON error: {e} | raw: {r.text[:200]}")
             return None, (rl_limit, rl_left)
 
-# -------------- Dice helpers --------------
+    # -------------- Dice helpers --------------
     @staticmethod
     def _cap(val, lo, hi):
         return max(lo, min(hi, val))
@@ -235,3 +235,9 @@ class WolfBetBot:
 if __name__ == "__main__":
     bot = WolfBetBot("config.json")
     bot.run()
+
+
+
+
+
+
