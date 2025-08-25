@@ -46,24 +46,24 @@ class WolfBetBot:
     # ---------------- REST calls ----------------
     def _get(self, path):
         try:
-            r = requests.get(f"{API_BASE}{path}", headers=self.headers, timeout=20)
+            r = requests.get(f"{CYAN}{API_BASE}{path}", headers=self.headers, timeout=20)
             if self.debug and r.status_code != 200:
-                print(f"[GET {path}] HTTP {r.status_code}: {r.text[:200]}")
+                print(f"{YELLOW}[GET {path}] HTTP {r.status_code}: {r.text[:200]}")
             return r
         except Exception as e:
             if self.debug:
-                print(f"⚠️ GET {path} network error: {e}")
+                print(f"{RED}⚠️ GET {path} network error: {e}")
             return None
 
     def _post(self, path, payload):
         try:
-            r = requests.post(f"{API_BASE}{path}", headers=self.headers, json=payload, timeout=20)
+            r = requests.post(f"{BLUE}{API_BASE}{path}", headers=self.headers, json=payload, timeout=20)
             if self.debug and r.status_code != 200:
-                print(f"[POST {path}] HTTP {r.status_code}: {r.text[:200]}")
+                print(f"{BLUE}[POST {path}] HTTP {r.status_code}: {r.text[:200]}")
             return r
         except Exception as e:
             if self.debug:
-                print(f"⚠️ POST {path} network error: {e}")
+                print(f"{YELLOW}⚠️ POST {path} network error: {e}")
             return None
 
     def get_balances(self):
@@ -75,7 +75,7 @@ class WolfBetBot:
             return data.get("balances", [])
         except Exception as e:
             if self.debug:
-                print(f"⚠️ Parse balances JSON error: {e} | raw: {r.text[:200]}")
+                print(f"{RED}⚠️ Parse balances JSON error: {e} | raw: {r.text[:200]}")
             return None
 
     def get_balance_currency(self, currency):
@@ -91,6 +91,7 @@ class WolfBetBot:
         return None
 
     def place_dice_bet(self, amount, rule, bet_value, multiplier):
+        amount = round(float(amount),8)
         payload = {
             "currency": self.currency,  # enum lower-case per docs
             "game": "dice",
@@ -157,9 +158,9 @@ class WolfBetBot:
         print("🚀 Wolf.bet Auto Dice Bot Started")
         bal = self.get_balance_currency(self.currency)
         if bal is None:
-            print("❌ Tak dapat baca balance. Semak token/endpoint atau headers.")
+            print("{RED}❌ Tak dapat baca balance. Semak token/endpoint atau headers.")
             return
-        print(f"💰 Balance: {bal:.8f} {self.currency.upper()}")
+        print(f"{GREEN}💰 Balance: {bal:.8f} {self.currency.upper()}")
 
         self.session_profit = 0.0
         self.current_bet = self.base_bet
@@ -167,19 +168,19 @@ class WolfBetBot:
         while True:
             # safety
             if self.session_profit <= self.stop_loss:
-                print(f"🛑 Stop-loss triggered: {self.session_profit:.8f} {self.currency.upper()}")
+                print(f"{YELLOW}🛑 Stop-loss triggered{RESET}: {self.session_profit:.8f} {self.currency.upper()}")
                 break
             if self.session_profit >= self.take_profit:
-                print(f"✅ Take-profit triggered: {self.session_profit:.8f} {self.currency.upper()}")
+                print(f"{GREEN}✅ Take-profit triggered{RESET}: {self.session_profit:.8f} {self.currency.upper()}")
                 break
             if self.current_bet > self.max_bet:
-                print(f"⚠️ current_bet {self.current_bet} > max_bet {self.max_bet} → reset base.")
+                print(f"{CYAN}⚠️ current_bet {self.current_bet} > max_bet {self.max_bet} → reset base.")
                 self.current_bet = self.base_bet
 
             rule, bet_value, theo_mult = self.chance_to_rule_and_threshold()
 
             if self.debug:
-                print(f"🎯 BET | {rule.upper()} {bet_value:.2f} | amt={self.current_bet:.8f} {self.currency} | theo_mult≈{theo_mult}")
+                print(f"{BLUE}🎯 BET | {rule.upper()} {bet_value:.2f} | amt={self.current_bet:.8f} {self.currency} | theo_mult≈{theo_mult}")
 
             data, rate_headers = self.place_dice_bet(
                 amount=self.current_bet,
@@ -189,7 +190,7 @@ class WolfBetBot:
             )
 
             if rate_headers and rate_headers[0] and rate_headers[1] and self.debug:
-                print(f"⏳ Rate-limit: {rate_headers[1]}/{rate_headers[0]} remaining")
+                print(f"{BLUE}⏳ Rate-limit{CYAN}: {rate_headers[1]}/{rate_headers[0]} remaining")
 
             if not data:
                 print("⚠️ Tiada data bet (network/parse). Re-try lepas cooldown.")
@@ -212,24 +213,24 @@ class WolfBetBot:
 
             if state == "win":
                 self.session_profit += profit
-                print(f"✅ WIN | roll={bet.get('result_value')} | profit=+{profit:.8f} | session={self.session_profit:.8f}")
+                print(f"{GREEN}✅ WIN {RESET}| roll={bet.get('result_value')} | profit=+{profit:.8f} | session={self.session_profit:.8f}")
                 self.current_bet = self.base_bet
             else:
                 # pada loss, API `profit` biasanya negatif / 0 — kita tolak amount manual jika perlu
                 loss_amount = float(bet.get("amount", self.current_bet))
                 self.session_profit -= float(loss_amount)
-                print(f"❌ LOSE | roll={bet.get('result_value')} | -{loss_amount:.8f} | session={self.session_profit:.8f}")
+                print(f"{RED}❌ LOSE {RESET}| roll={bet.get('result_value')} | -{loss_amount:.8f} | session={self.session_profit:.8f}")
                 self.current_bet = round(self.current_bet * self.multiplier_factor, 12)
 
             if ub and "amount" in ub and self.debug:
                 try:
-                    print(f"💼 New balance: {float(ub['amount']):.8f} {ub.get('currency','').upper()}")
+                    print(f"{BLUE}💼 New balance{RESET}: {float(ub['amount']):.8f} {ub.get('currency','').upper()}")
                 except Exception:
                     pass
 
             # Jika rate-limit habis, tunggu 60s (ikut docs)
             if rate_headers and rate_headers[1] == "0":
-                print("⏱️ Rate-limit habis. Tidur 60s.")
+                print("{RED}⏱️ Rate-limit habis. Tidur 60s.")
                 time.sleep(60)
             else:
                 time.sleep(self.cooldown)
@@ -241,6 +242,7 @@ class WolfBetBot:
 if __name__ == "__main__":
     bot = WolfBetBot("config.json")
     bot.run()
+
 
 
 
