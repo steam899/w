@@ -2,14 +2,19 @@ import json
 import time
 import random
 import requests
+import sys
 
-# ANSI colors
-RED    = "\033[91m"
-GREEN  = "\033[92m"
-YELLOW = "\033[93m"
-BLUE   = "\033[94m"
-CYAN   = "\033[96m"
-RESET  = "\033[0m"
+# ---------------- ANSI colors ----------------
+RED     = "\033[91m"
+GREEN   = "\033[92m"
+YELLOW  = "\033[93m"
+BLUE    = "\033[94m"
+CYAN    = "\033[96m"
+MAGENTA = "\033[95m"
+WHITE   = "\033[97m"
+RESET   = "\033[0m"
+
+GRADIENT = [RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA]
 
 API_BASE = "https://wolfbet.com/api/v1"
 
@@ -31,7 +36,7 @@ class WolfBetBot:
 
         self.currency = str(self.cfg.get("currency", "btc")).lower()
         self.base_bet = float(self.cfg.get("base_bet", 0.00000001))
-        self.multiplier_factor = float(self.cfg.get("multiplier", 2.0))  # utk gandakan stake bila kalah
+        self.multiplier_factor = float(self.cfg.get("multiplier", 2.0))
         self.max_bet = float(self.cfg.get("max_bet", 0.0001))
         self.chance = float(self.cfg.get("chance", 49.5))
         self.rule_mode = str(self.cfg.get("rule_mode", "auto")).lower()
@@ -39,16 +44,19 @@ class WolfBetBot:
         self.stop_loss = float(self.cfg.get("stop_loss", -0.0005))
         self.cooldown = float(self.cfg.get("cooldown_sec", 1.0))
         self.debug = bool(self.cfg.get("debug", True))
+        self.auto_start = bool(self.cfg.get("auto_start", False))
+        self.auto_start_delay = int(self.cfg.get("auto_start_delay", 5))
 
         self.session_profit = 0.0
         self.current_bet = self.base_bet
+
+        self._summary_drawn = False
+        self._summary_height = 5
 
     # ---------------- REST calls ----------------
     def _get(self, path):
         try:
             r = requests.get(f"{API_BASE}{path}", headers=self.headers, timeout=20)
-            if self.debug and r.status_code != 200:
-                print(f"{YELLOW}[GET {path}] HTTP {r.status_code}:{RESET} {r.text[:200]}")
             return r
         except Exception as e:
             if self.debug:
@@ -58,8 +66,6 @@ class WolfBetBot:
     def _post(self, path, payload):
         try:
             r = requests.post(f"{API_BASE}{path}", headers=self.headers, json=payload, timeout=20)
-            if self.debug and r.status_code != 200:
-                print(f"{BLUE}[POST {path}] HTTP {r.status_code}:{RESET} {r.text[:200]}")
             return r
         except Exception as e:
             if self.debug:
@@ -73,9 +79,7 @@ class WolfBetBot:
         try:
             data = r.json()
             return data.get("balances", [])
-        except Exception as e:
-            if self.debug:
-                print(f"{RED}⚠️ Parse balances JSON error:{RESET} {e} | raw: {r.text[:200]}")
+        except Exception:
             return None
 
     def get_balance_currency(self, currency):
@@ -92,11 +96,9 @@ class WolfBetBot:
 
     def place_dice_bet(self, amount, rule, bet_value):
         amount = round(float(amount), 8)
-
-        # ✅ multiplier wajib ikut formula win_chance
         win_chance = bet_value if rule == "under" else (100.0 - bet_value)
         multiplier = 99.0 / win_chance
-        multiplier = float(f"{multiplier:.4f}")  # round 4 dp
+        multiplier = float(f"{multiplier:.4f}")
 
         payload = {
             "currency": self.currency,
@@ -116,9 +118,7 @@ class WolfBetBot:
         try:
             data = r.json()
             return data, (rl_limit, rl_left)
-        except Exception as e:
-            if self.debug:
-                print(f"{RED}⚠️ Parse bet JSON error:{RESET} {e} | raw: {r.text[:200]}")
+        except Exception:
             return None, (rl_limit, rl_left)
 
     # -------------- Dice helpers --------------
@@ -128,7 +128,6 @@ class WolfBetBot:
 
     def chance_to_rule_and_threshold(self):
         chance = self._cap(self.chance, 0.01, 99.99)
-
         if self.rule_mode == "over":
             rule = "over"
             bet_value = self._cap(100.0 - chance, 0.01, 99.99)
@@ -142,85 +141,129 @@ class WolfBetBot:
             else:
                 rule = "over"
                 bet_value = self._cap(100.0 - chance, 0.01, 99.99)
-
         return rule, bet_value
+
+    # -------------- UI helpers --------------
+    def _summary_lines(self, start_balance, current_balance, total_bets, win, lose):
+        return [
+            f"{YELLOW}📊 Ringkasan Sesi{RESET}",
+            f"   🔹 Baki awal : {start_balance:.8f} {self.currency.upper()}",
+            f"   🔹 Baki      : {current_balance:.8f} {self.currency.upper()}",
+            f"   🔹 Untung/Rugi: {self.session_profit:.8f} {self.currency.upper()}",
+            f"   🔹 Jumlah BET : {total_bets} (WIN {win} / LOSE {lose})",
+        ]
+
+    def _insert_bet_and_refresh_summary(self, bet_line, start_balance, current_balance, total_bets, win, lose):
+        n = self._summary_height
+        if not self._summary_drawn:
+            print("\n" * n)
+            self._summary_drawn = True
+
+        sys.stdout.write(f"\x1b[{n}F")
+        sys.stdout.write("\x1b[1L")
+        print(bet_line)
+        sys.stdout.write("\x1b[1E")
+
+        lines = self._summary_lines(start_balance, current_balance, total_bets, win, lose)
+        for i, line in enumerate(lines):
+            sys.stdout.write("\x1b[2K")
+            sys.stdout.write(line)
+            if i < len(lines) - 1:
+                sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    # -------------- Logo --------------
+    def draw_logo(self):
+        logo_text = "W O L F   D I C E   B O T"
+        for i, c in enumerate(logo_text):
+            color = GRADIENT[i % len(GRADIENT)]
+            print(f"{color}{c}{RESET}", end="")
+        print("\n")
+        emoji_line = "🎲🐺  🎲🐺  🎲🐺  🎲🐺  🎲🐺"
+        print(emoji_line, "\n")
 
     # -------------- Strategy loops --------------
     def martingale(self):
-        print(f"{CYAN}🚀 Wolf.bet Auto Dice Bot Started{RESET}")
-        bal = self.get_balance_currency(self.currency)
-        if bal is None:
+        self.draw_logo()
+        start_balance = self.get_balance_currency(self.currency)
+        if start_balance is None:
             print(f"{RED}❌ Tak dapat baca balance. Semak token/endpoint atau headers.{RESET}")
             return
-        print(f"{GREEN}💰 Balance:{RESET} {bal:.8f} {self.currency.upper()}")
+        print(f"{GREEN}💰 Baki awal:{RESET} {start_balance:.8f} {self.currency.upper()}")
 
         self.session_profit = 0.0
         self.current_bet = self.base_bet
+        win_count, lose_count, total_bets = 0, 0, 0
+        current_balance = start_balance
 
         while True:
-            # safety checks
             if self.session_profit <= self.stop_loss:
-                print(f"{YELLOW}🛑 Stop-loss triggered:{RESET} {self.session_profit:.8f} {self.currency.upper()}")
+                print(f"\n{YELLOW}🛑 Stop-loss triggered:{RESET} {self.session_profit:.8f} {self.currency.upper()}")
                 break
             if self.session_profit >= self.take_profit:
-                print(f"{GREEN}✅ Take-profit triggered:{RESET} {self.session_profit:.8f} {self.currency.upper()}")
+                print(f"\n{GREEN}✅ Take-profit triggered:{RESET} {self.session_profit:.8f} {self.currency.upper()}")
                 break
             if self.current_bet > self.max_bet:
-                print(f"{CYAN}⚠️ current_bet reset base.{RESET}")
+                print(f"\n{CYAN}⚠️ current_bet reset base.{RESET}")
                 self.current_bet = self.base_bet
 
             rule, bet_value = self.chance_to_rule_and_threshold()
 
-            if self.debug:
-                print(f"{BLUE}🎯 BET{RESET} | {rule.upper()} {bet_value:.2f} | amt={self.current_bet:.8f} {self.currency}")
-
-            data, rate_headers = self.place_dice_bet(
+            data, _ = self.place_dice_bet(
                 amount=self.current_bet,
                 rule=rule,
                 bet_value=bet_value
             )
-
-            if rate_headers and rate_headers[0] and rate_headers[1] and self.debug:
-                print(f"{BLUE}⏳ Rate-limit{RESET}: {rate_headers[1]}/{rate_headers[0]} remaining")
-
             if not data:
-                print("⚠️ Tiada data bet (network/parse). Re-try lepas cooldown.")
                 time.sleep(self.cooldown)
                 continue
 
             bet = data.get("bet")
             ub  = data.get("user_balance")
-
             if bet is None:
-                err = data.get("error") or data
-                print(f"{RED}❌ Bet error:{RESET} {err}")
                 time.sleep(self.cooldown)
                 continue
 
             state = bet.get("state")
             profit = float(bet.get("profit", 0) or 0)
+            total_bets += 1
+            result_value = bet.get("result_value")
 
             if state == "win":
                 self.session_profit += profit
-                print(f"{GREEN}✅ WIN{RESET} | roll={bet.get('result_value')} | profit=+{profit:.8f} | session={self.session_profit:.8f}")
+                win_count += 1
+                outcome = f"{GREEN}WIN +{profit:.8f}{RESET}"
                 self.current_bet = self.base_bet
             else:
                 loss_amount = float(bet.get("amount", self.current_bet))
                 self.session_profit -= float(loss_amount)
-                print(f"{RED}❌ LOSE{RESET} | roll={bet.get('result_value')} | -{loss_amount:.8f} | session={self.session_profit:.8f}")
+                lose_count += 1
+                outcome = f"{RED}LOSE -{loss_amount:.8f}{RESET}"
                 self.current_bet = round(self.current_bet * self.multiplier_factor, 12)
 
-            if ub and "amount" in ub and self.debug:
-                try:
-                    print(f"{CYAN}💼 New balance:{RESET} {float(ub['amount']):.8f} {ub.get('currency','').upper()}")
-                except Exception:
-                    pass
-
-            if rate_headers and rate_headers[1] == "0":
-                print(f"{RED}⏱️ Rate-limit habis. Tidur 60s.{RESET}")
-                time.sleep(60)
+            if self.session_profit >= 0:
+                profit_amount = f"{GREEN}{self.session_profit:.8f}{RESET}"
             else:
-                time.sleep(self.cooldown)
+                profit_amount = f"{RED}{self.session_profit:.8f}{RESET}"
+
+            MAGENTA_SEP = f"{MAGENTA}|{RESET}"
+
+            bet_line = f"🎲🐺 {MAGENTA_SEP} {result_value} {MAGENTA_SEP} {BLUE}Bet{RESET} {self.current_bet:.8f} {MAGENTA_SEP} {outcome} {MAGENTA_SEP} {YELLOW}P{RESET} {profit_amount}"
+
+            self._insert_bet_and_refresh_summary(
+                bet_line=bet_line,
+                start_balance=start_balance,
+                current_balance=current_balance,
+                total_bets=total_bets,
+                win=win_count,
+                lose=lose_count,
+            )
+
+            time.sleep(self.cooldown)
+
+        print("\n")
+        final_lines = self._summary_lines(start_balance, current_balance, total_bets, win_count, lose_count)
+        print("\n".join(final_lines))
 
     def run(self):
         self.martingale()
@@ -228,4 +271,10 @@ class WolfBetBot:
 
 if __name__ == "__main__":
     bot = WolfBetBot("config.json")
-    bot.run()
+
+    while True:
+        bot.run()
+        if not bot.auto_start:
+            break
+        print(f"\n{CYAN}🔄 Auto-restart in {bot.auto_start_delay} seconds...{RESET}")
+        time.sleep(bot.auto_start_delay)
