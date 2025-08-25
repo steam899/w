@@ -3,6 +3,12 @@ import time
 import math
 import random
 import requests
+RED ="\033[91m"
+GREEN ="\033[92m"
+YELLOW ="\033[93m"
+BLUE ="\033[94m"
+CYAN ="\033[96m"
+RESET ="\033[0m"
 
 API_BASE = "https://wolfbet.com/api/v1"
 
@@ -235,6 +241,7 @@ class WolfBetBot:
 if __name__ == "__main__":
     bot = WolfBetBot("config.json")
     bot.run()
+
 
 
 
