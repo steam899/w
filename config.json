@@ -1,14 +1,15 @@
 {
-  "access_token": "API KEY"
-  "currency": "ltc",
-  "base_bet": 0.00000001,
-  "multiplier": 2.0,
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI1IiwianRpIjoiZDBiMTJhNTQ0NjlhNjdhMmY1NjZlYzE5ZjBkZmU5MmI0ODlhYjViMTA3Zjg5YTMzNTM4ZmJhNjQzYmFhOGFjYTZlYjQ1NjRiMzUzYjIxMmMiLCJpYXQiOjE3NTYwMjY5MDEuMzYwMTgsIm5iZiI6MTc1NjAyNjkwMS4zNjAxODQsImV4cCI6MTc4NzU2MjkwMS4zNTM0NDEsInN1YiI6IjM1MTUxMiIsInNjb3BlcyI6W119.Jo7L4ki5OJie6ssgUlw0LIjqZRm8RhHeggbbOseAZRPzNP3vZ39Z1tP_dooVlEo6juFbEl4ZWwBWsTLmCYhKgupXhKENQIF5G-WHFmXRc3e7SKq34jz4n0fAa9K3lmwx3bdqLxxGN9SMJAe0iG1r5_DWLv1aAFiJ8J2MnxiN-nyVTbcUHdiinoBQkhPCAHRaOkCwEk5V9R8zV3PN1T8Inx4MTYFBue-IlYZfshDqju_k4xN7fe-gZDTwXENgDY9lHoQIjSfxF9ZjwqvebkPm6Wb9702uQKZo35AH-_kM_tNh1EBFp-lB7Qrs-kUvzf5SxuuTuJif9MbA_lwx1WBv9cAaITjUr7qb8udF8_6iXgEfTkpFSiquaERkVxG_4Q_sfKqyRV-11ZPWnhU7iG2Y3h_rRlF_yWA8UF7cHU7xN8yM2Pk_ynf56L3Sq9T-Rd3VHvcxKukWP-_A7DL1iyicq5sAS6HjEe1xEyHDlR28nop3W1k9NWro9YCB-VMi5nTWrU4Tr6MjSi8j4Ko_mLI_LWAOQIDoy44jK2on8MrUnjj8QEfTCha556FGKPonEtRYo--orhyx7TBtdTitklZWGy_dhUTQn_lnSgaWO3SJhZ9A_NwEXtODHBIgLXhh9FMZ9zEJmOJfq7YrAalQhujmdDA9WIRbpUFBOt-N-RBuEzQ",
+  "currency": "matic",
+  "base_bet": 0.00000004,
+  "multiplier": 2.35,
   "max_bet": 0.0001,
   "chance": 49.5,
   "rule_mode": "under",
   "take_profit": 0.0005,
-  "stop_loss": -0.0005,
+  "stop_loss": -0.005,
   "cooldown_sec": 0.1,
   "debug": true
 }
+
 
