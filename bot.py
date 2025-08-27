@@ -2,7 +2,11 @@ import json
 import time
 import random
 import requests
-import sys
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.live import Live
+from rich.layout import Layout
 
 # ---------------- ANSI colors ----------------
 RED     = "\033[91m"
@@ -17,6 +21,7 @@ RESET   = "\033[0m"
 GRADIENT = [RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA]
 
 API_BASE = "https://wolfbet.com/api/v1"
+console = Console()
 
 class WolfBetBot:
     def __init__(self, cfg_path="config.json"):
@@ -49,9 +54,10 @@ class WolfBetBot:
 
         self.session_profit = 0.0
         self.current_bet = self.base_bet
-
-        self._summary_drawn = False
-        self._summary_height = 5
+        self.bet_history = []
+        self.start_time = None   # untuk runtime tracking
+        self.loss_streak_total = 0.0  # cumulative lose streak
+        self.session_count = 0   # NEW: session counter
 
     # ---------------- REST calls ----------------
     def _get(self, path):
@@ -60,7 +66,7 @@ class WolfBetBot:
             return r
         except Exception as e:
             if self.debug:
-                print(f"{RED}⚠️ GET {path} network error:{RESET} {e}")
+                console.print(f"[red]⚠️ GET {path} network error:[/red] {e}")
             return None
 
     def _post(self, path, payload):
@@ -69,7 +75,7 @@ class WolfBetBot:
             return r
         except Exception as e:
             if self.debug:
-                print(f"{YELLOW}⚠️ POST {path} network error:{RESET} {e}")
+                console.print(f"[yellow]⚠️ POST {path} network error:[/yellow] {e}")
             return None
 
     def get_balances(self):
@@ -143,34 +149,44 @@ class WolfBetBot:
                 bet_value = self._cap(100.0 - chance, 0.01, 99.99)
         return rule, bet_value
 
-    # -------------- UI helpers --------------
-    def _summary_lines(self, start_balance, current_balance, total_bets, win, lose):
-        return [
-            f"{YELLOW}📊 Ringkasan Sesi{RESET}",
-            f"   🔹 Baki awal : {start_balance:.8f} {self.currency.upper()}",
-            f"   🔹 Baki      : {current_balance:.8f} {self.currency.upper()}",
-            f"   🔹 Untung/Rugi: {self.session_profit:.8f} {self.currency.upper()}",
-            f"   🔹 Jumlah BET : {total_bets} (WIN {win} / LOSE {lose})",
-        ]
+    # -------------- UI Rich Version --------------
+    def _summary_panel(self, start_balance, current_balance, total_bets, win, lose, runtime):
+        txt = f"""
+[bold yellow]Baki Awal :[/bold yellow] {start_balance:.8f} {self.currency.upper()}
+[bold cyan]Baki Sekarang:[/bold cyan] {current_balance:.8f} {self.currency.upper()}
+[bold green]Profit/Rugi:[/bold green] {self.session_profit:.8f} {self.currency.upper()}
+[bold magenta]Jumlah BET :[/bold magenta] {total_bets} (WIN {win} / LOSE {lose})
+[bold white]Runtime :[/bold white] {runtime}
+[bold blue]Session :[/bold blue] #{self.session_count}
+"""
+        return Panel(txt, title="📊 Ringkasan Sesi", border_style="bold blue")
 
-    def _insert_bet_and_refresh_summary(self, bet_line, start_balance, current_balance, total_bets, win, lose):
-        n = self._summary_height
-        if not self._summary_drawn:
-            print("\n" * n)
-            self._summary_drawn = True
+    def _bet_table(self):
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Target")
+        table.add_column("Result")
+        table.add_column("Bet")
+        table.add_column("W/L")
+        table.add_column("Profit")
 
-        sys.stdout.write(f"\x1b[{n}F")
-        sys.stdout.write("\x1b[1L")
-        print(bet_line)
-        sys.stdout.write("\x1b[1E")
+        for row in self.bet_history[-10:]:
+            table.add_row(*row)
+        return table
 
-        lines = self._summary_lines(start_balance, current_balance, total_bets, win, lose)
-        for i, line in enumerate(lines):
-            sys.stdout.write("\x1b[2K")
-            sys.stdout.write(line)
-            if i < len(lines) - 1:
-                sys.stdout.write("\n")
-        sys.stdout.flush()
+    def _update_ui(self, start_balance, current_balance, total_bets, win, lose, live):
+        elapsed = int(time.time() - self.start_time)
+        runtime_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+
+        layout = Layout()
+        layout.split(
+            Layout(name="summary", size=9),
+            Layout(name="bets")
+        )
+        layout["summary"].update(
+            self._summary_panel(start_balance, current_balance, total_bets, win, lose, runtime_str)
+        )
+        layout["bets"].update(self._bet_table())
+        live.update(layout)
 
     # -------------- Logo --------------
     def draw_logo(self):
@@ -187,85 +203,79 @@ class WolfBetBot:
         self.draw_logo()
         start_balance = self.get_balance_currency(self.currency)
         if start_balance is None:
-            print(f"{RED}❌ Tak dapat baca balance. Semak token/endpoint atau headers.{RESET}")
+            console.print(f"[red]❌ Tak dapat baca balance. Semak token/endpoint atau headers.[/red]")
             return
-        print(f"{GREEN}💰 Baki awal:{RESET} {start_balance:.8f} {self.currency.upper()}")
+        console.print(f"[green]💰 Baki awal:[/green] {start_balance:.8f} {self.currency.upper()}")
 
         self.session_profit = 0.0
         self.current_bet = self.base_bet
         win_count, lose_count, total_bets = 0, 0, 0
-        current_balance = start_balance
+        self.start_time = time.time()
+        self.loss_streak_total = 0.0
 
-        while True:
-            if self.session_profit <= self.stop_loss:
-                print(f"\n{YELLOW}🛑 Stop-loss triggered:{RESET} {self.session_profit:.8f} {self.currency.upper()}")
-                break
-            if self.session_profit >= self.take_profit:
-                print(f"\n{GREEN}✅ Take-profit triggered:{RESET} {self.session_profit:.8f} {self.currency.upper()}")
-                break
-            if self.current_bet > self.max_bet:
-                print(f"\n{CYAN}⚠️ current_bet reset base.{RESET}")
-                self.current_bet = self.base_bet
+        with Live(refresh_per_second=4, screen=True) as live:
+            while True:
+                if self.session_profit <= self.stop_loss:
+                    console.print(f"\n[yellow]🛑 Stop-loss triggered:[/yellow] {self.session_profit:.8f} {self.currency.upper()}")
+                    break
+                if self.session_profit >= self.take_profit:
+                    console.print(f"\n[green]✅ Take-profit triggered:[/green] {self.session_profit:.8f} {self.currency.upper()}")
+                    break
+                if self.current_bet > self.max_bet:
+                    console.print(f"\n[cyan]⚠️ current_bet reset base.[/cyan]")
+                    self.current_bet = self.base_bet
 
-            rule, bet_value = self.chance_to_rule_and_threshold()
+                rule, bet_value = self.chance_to_rule_and_threshold()
+                data, _ = self.place_dice_bet(amount=self.current_bet, rule=rule, bet_value=bet_value)
+                if not data:
+                    time.sleep(self.cooldown)
+                    continue
 
-            data, _ = self.place_dice_bet(
-                amount=self.current_bet,
-                rule=rule,
-                bet_value=bet_value
-            )
-            if not data:
+                bet = data.get("bet")
+                if bet is None:
+                    time.sleep(self.cooldown)
+                    continue
+
+                state = bet.get("state")
+                profit = float(bet.get("profit", 0) or 0)
+                total_bets += 1
+                result_value = str(bet.get("result_value"))
+
+                if state == "win":
+                    self.session_profit += profit
+                    win_count += 1
+                    outcome = "[green]WIN[/green]"
+                    self.current_bet = self.base_bet
+                    self.loss_streak_total = 0.0
+                    display_profit = f"[green]{profit:.8f}[/green]"
+                else:
+                    loss_amount = float(bet.get("amount", self.current_bet))
+                    self.session_profit -= float(loss_amount)
+                    lose_count += 1
+                    outcome = "[red]LOSE[/red]"
+                    self.current_bet = round(self.current_bet * self.multiplier_factor, 12)
+                    self.loss_streak_total += loss_amount
+                    display_profit = f"[red]{-self.loss_streak_total:.8f}[/red]"
+
+                arrow = "⬆" if rule == "over" else "⬇"
+                self.bet_history.append([
+                    f"{arrow} {bet_value:.2f}",
+                    result_value,
+                    f"{self.current_bet:.8f}",
+                    outcome,
+                    display_profit
+                ])
+
+                current_balance = start_balance + self.session_profit
+                self._update_ui(start_balance, current_balance, total_bets, win_count, lose_count, live)
                 time.sleep(self.cooldown)
-                continue
 
-            bet = data.get("bet")
-            ub  = data.get("user_balance")
-            if bet is None:
-                time.sleep(self.cooldown)
-                continue
-
-            state = bet.get("state")
-            profit = float(bet.get("profit", 0) or 0)
-            total_bets += 1
-            result_value = bet.get("result_value")
-
-            if state == "win":
-                self.session_profit += profit
-                win_count += 1
-                outcome = f"{GREEN}WIN +{profit:.8f}{RESET}"
-                self.current_bet = self.base_bet
-            else:
-                loss_amount = float(bet.get("amount", self.current_bet))
-                self.session_profit -= float(loss_amount)
-                lose_count += 1
-                outcome = f"{RED}LOSE -{loss_amount:.8f}{RESET}"
-                self.current_bet = round(self.current_bet * self.multiplier_factor, 12)
-
-            if self.session_profit >= 0:
-                profit_amount = f"{GREEN}{self.session_profit:.8f}{RESET}"
-            else:
-                profit_amount = f"{RED}{self.session_profit:.8f}{RESET}"
-
-            MAGENTA_SEP = f"{MAGENTA}|{RESET}"
-
-            bet_line = f"🎲🐺 {MAGENTA_SEP} {result_value} {MAGENTA_SEP} {BLUE}Bet{RESET} {self.current_bet:.8f} {MAGENTA_SEP} {outcome} {MAGENTA_SEP} {YELLOW}P{RESET} {profit_amount}"
-
-            self._insert_bet_and_refresh_summary(
-                bet_line=bet_line,
-                start_balance=start_balance,
-                current_balance=current_balance,
-                total_bets=total_bets,
-                win=win_count,
-                lose=lose_count,
-            )
-
-            time.sleep(self.cooldown)
-
-        print("\n")
-        final_lines = self._summary_lines(start_balance, current_balance, total_bets, win_count, lose_count)
-        print("\n".join(final_lines))
+        final_runtime = time.strftime("%H:%M:%S", time.gmtime(int(time.time() - self.start_time)))
+        final_panel = self._summary_panel(start_balance, start_balance + self.session_profit, total_bets, win_count, lose_count, final_runtime)
+        console.print(final_panel)
 
     def run(self):
+        self.session_count += 1
         self.martingale()
 
 
@@ -276,5 +286,5 @@ if __name__ == "__main__":
         bot.run()
         if not bot.auto_start:
             break
-        print(f"\n{CYAN}🔄 Auto-restart in {bot.auto_start_delay} seconds...{RESET}")
+        console.print(f"\n[cyan]🔄 Auto-restart in {bot.auto_start_delay} seconds...[/cyan]")
         time.sleep(bot.auto_start_delay)
