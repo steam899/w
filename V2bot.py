@@ -1,4 +1,4 @@
-import json
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       V2bot.py                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           import json
 import time
 import random
 import requests
@@ -152,12 +152,12 @@ class WolfBetBot:
     # -------------- UI helpers --------------
     def _summary_panel(self, start_balance, current_balance, total_bets, win, lose, runtime):
         txt = f"""
-[bold yellow]Baki Awal :[/bold yellow] {start_balance:.8f} {self.currency.upper()}
-[bold cyan]Baki Sekarang:[/bold cyan] {current_balance:.8f} {self.currency.upper()}
-[bold green]Profit/Rugi:[/bold green] {self.session_profit:.8f} {self.currency.upper()}
-[bold magenta]Jumlah BET :[/bold magenta] {total_bets} (WIN {win} / LOSE {lose})
-[bold white]Runtime :[/bold white] {runtime}
-[bold blue]Session Ke-:[/bold blue] {self.session_count}
+[bold yellow]🏦Baki Awal :[/bold yellow] {start_balance:.8f} {self.currency.upper()}
+[bold cyan]💱Baki Sekarang:[/bold cyan] {current_balance:.8f} {self.currency.upper()}
+[bold green]🏧Profit/Rugi:[/bold green] {self.session_profit:.8f} {self.currency.upper()}
+[bold magenta]🔄Jumlah BET :[/bold magenta] {total_bets} (WIN {win} / LOSE {lose})
+[bold white]⏰Runtime :[/bold white] {runtime}
+[bold red]🚦Session :[/bold red] {self.session_count}
 """
         return Panel(txt, title="📊 Ringkasan Sesi", border_style="bold blue")
 
@@ -165,11 +165,11 @@ class WolfBetBot:
         table = Table(show_header=True, header_style="bold magenta")
         table.add_column("Target")
         table.add_column("Result")
-        table.add_column("Bet")
+        table.add_column("Bet Session")
         table.add_column("W/L")
         table.add_column("Profit")
 
-        for row in self.bet_history[-10:]:
+        for row in self.bet_history[-32:]:
             table.add_row(*row)
         return table
 
@@ -177,8 +177,8 @@ class WolfBetBot:
         # kira runtime & speed
         elapsed = max(1, int(time.time() - self.start_time))
         speed = round(total_bets / elapsed, 2)
-        text = "[ GUNA VPS UNTUK + SPEED ]\n" \
-               f"Speed : {speed} Bets / Second"
+        text = "[bold yellow][ GUNA VPS UNTUK + SPEED ][/bold yellow]\n" \
+               f"Speed :[bold magenta]{speed}[/bold magenta] Bets / Second"
         return Panel(text, border_style="green")
 
     def _update_ui(self, start_balance, current_balance, total_bets, win, lose, live):
@@ -202,7 +202,7 @@ class WolfBetBot:
 
     # -------------- Logo --------------
     def draw_logo(self):
-        logo_text = "W O L F   D I C E   B O T"
+        logo_text = "W O L F 🍀 D I C E 🍀 B O T"
         for i, c in enumerate(logo_text):
             color = GRADIENT[i % len(GRADIENT)]
             print(f"{color}{c}{RESET}", end="")
@@ -257,28 +257,28 @@ class WolfBetBot:
                 if state == "win":
                     self.session_profit += profit
                     win_count += 1
-                    outcome = "WIN"
+                    outcome = "[bold green]WIN[/bold green]"
                     self.current_bet = self.base_bet
 
                     # reset streak
                     self.loss_streak_total = 0.0
-                    display_profit = f"{profit:.8f}"
+                    display_profit = f"[bold green]{profit:.8f}[/bold green]"
 
                 else:
                     loss_amount = float(bet.get("amount", self.current_bet))
                     self.session_profit -= float(loss_amount)
                     lose_count += 1
-                    outcome = "LOSE"
+                    outcome = "[red]LOSE[/red]"
                     self.current_bet = round(self.current_bet * self.multiplier_factor, 12)
 
                     # tambah ke total lose streak
                     self.loss_streak_total += loss_amount
-                    display_profit = f"{-self.loss_streak_total:.8f}"
+                    display_profit = f"[red]{-self.loss_streak_total:.8f}[/red]"
 
                 # simpan row (Target dengan arrow tanpa warna)
                 arrow = "↑" if rule == "over" else "↓"
                 self.bet_history.append([
-                    f"{bet_value:.2f}{arrow}",       # Target e.g. "49.50↑" atau "49.50↓"
+                    f"{bet_value:.2f}[cyan]{arrow}[/cyan]",       # Target e.g. "49.50↑" atau "49.50↓"
                     result_value,                    # Result
                     f"{self.current_bet:.8f}",       # Bet (next amount after update)
                     outcome,                         # W/L
@@ -310,3 +310,10 @@ if __name__ == "__main__":
             break
         console.print(f"\n[cyan]🔄 Auto-restart in {bot.auto_start_delay} seconds...[/cyan]")
         time.sleep(bot.auto_start_delay)
+
+
+
+
+
+
+
