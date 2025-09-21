@@ -1,4 +1,4 @@
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       V2bot.py                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           import json
+import json
 import time
 import random
 import requests
@@ -310,6 +310,7 @@ if __name__ == "__main__":
             break
         console.print(f"\n[cyan]🔄 Auto-restart in {bot.auto_start_delay} seconds...[/cyan]")
         time.sleep(bot.auto_start_delay)
+
 
 
 
